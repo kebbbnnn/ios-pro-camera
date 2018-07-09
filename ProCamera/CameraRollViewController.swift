@@ -19,7 +19,7 @@ class CameraRollViewController: UIViewController {
         
     }
     
-    override func viewWillAppear(animated: Bool) {
+    override func viewWillAppear(_ animated: Bool) {
         imageView.image = lastImage
     }
 
@@ -28,8 +28,8 @@ class CameraRollViewController: UIViewController {
         // Dispose of any resources that can be recreated.
     }
     
-    @IBAction func onClose(sender: AnyObject) {
-        dismissViewControllerAnimated(true, completion: { () -> Void in
+    @IBAction func onClose(_ sender: AnyObject) {
+        dismiss(animated: true, completion: { () -> Void in
             
         })
     }

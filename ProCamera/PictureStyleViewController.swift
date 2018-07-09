@@ -13,8 +13,8 @@ class PictureStyleViewController: UIViewController, UITableViewDataSource, UITab
     let pictureStyles = ["Sharpness", "Contrast", "Saturation", "Color Tone"]
 
     @IBOutlet weak var tableView: UITableView!
-    @IBAction func onClose(sender: UIButton) {
-        dismissViewControllerAnimated(true, completion: { () -> Void in
+    @IBAction func onClose(_ sender: UIButton) {
+        dismiss(animated: true, completion: { () -> Void in
             
         })
     }
@@ -29,7 +29,7 @@ class PictureStyleViewController: UIViewController, UITableViewDataSource, UITab
         // Dispose of any resources that can be recreated.
     }
     
-    func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
         case 0:
             return 4
@@ -40,25 +40,25 @@ class PictureStyleViewController: UIViewController, UITableViewDataSource, UITab
         }
     }
     
-    func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         if indexPath.section == 0 {
-            var cell = tableView.dequeueReusableCellWithIdentifier("pictureStyleCell") as PictureStyleTableViewCell
+            let cell = tableView.dequeueReusableCell(withIdentifier: "pictureStyleCell") as! PictureStyleTableViewCell
             cell.nameLabel.text = pictureStyles[indexPath.row]
             return cell
         } else {
             //handle presets
-            var cell = tableView.dequeueReusableCellWithIdentifier("presetCell") as PresetTableViewCell
+            let cell = tableView.dequeueReusableCell(withIdentifier: "presetCell") as! PresetTableViewCell
             cell.presetName.text = "Default" // Placeholder
             return cell
         }
         
     }
 
-    func numberOfSectionsInTableView(tableView: UITableView) -> Int {
+    func numberOfSections(in tableView: UITableView) -> Int {
         return 2
     }
     
-    func tableView(tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch section {
         case 0:
             return "Picture Style"

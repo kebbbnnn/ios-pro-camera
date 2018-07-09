@@ -13,28 +13,29 @@ class MeterView: UIView {
     
     // Only override drawRect: if you perform custom drawing.
     // An empty implementation adversely affects performance during animation.
-    override func drawRect(rect: CGRect) {
-        println("MeterView: drawRect \(rect)")
+    override func draw(_ rect: CGRect) {
+        
+        print("MeterView: drawRect \(rect)")
         let context = UIGraphicsGetCurrentContext()
-        CGContextClearRect(context, rect)
+        context?.clear(rect)
         let strokeWidth: CGFloat = 2.0
         let marginWidth: CGFloat = 4.0
-        CGContextSetLineWidth(context, strokeWidth)
+        context?.setLineWidth(strokeWidth)
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let components: [CGFloat] = [1.0, 1.0, 1.0, 0.9]
-        let color = CGColorCreate(colorSpace, components)
-        CGContextSetStrokeColorWithColor(context, color)
+        let color = CGColor(colorSpace: colorSpace, components: components)
+        context?.setStrokeColor(color!)
         //find max_pixels in histogramRaw
         let meterMarkCount = 20
         let halfHeight = rect.height / 2.0
         // Draw meter from quater height. Leave top and bottom quater height
         // Meter only takes half of total height
-        for var i = 1; i < meterMarkCount; i++ {
+        for i in 1 ..< meterMarkCount {
             let y = CGFloat(i) * halfHeight / CGFloat(meterMarkCount) + halfHeight / 2.0
-            CGContextMoveToPoint(context, marginWidth, y) //x = i, y = height
-            CGContextAddLineToPoint(context, rect.width - marginWidth, y)
+            context?.move(to: CGPoint(x: marginWidth, y: y)) //x = i, y = height
+            context?.addLine(to: CGPoint(x: rect.width - marginWidth, y: y))
         }
-        CGContextStrokePath(context)
+        context?.strokePath()
     }
 
 

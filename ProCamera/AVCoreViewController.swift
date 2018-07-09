@@ -15,16 +15,16 @@ import Accelerate
 import MediaPlayer
 
 enum whiteBalanceMode {
-    case Auto
-    case Sunny
-    case Cloudy
-    case Temperature(Int)
+    case auto
+    case sunny
+    case cloudy
+    case temperature(Int)
     init() {
-        self = Auto
+        self = .auto
     }
     func getValue() -> Int {
         switch self {
-        case Temperature(let value):
+        case .temperature(let value):
             return value
         default:
             return -1
@@ -33,13 +33,13 @@ enum whiteBalanceMode {
 }
 
 enum ISOMode {
-    case Auto, Custom
+    case auto, custom
 }
 
 
 extension Float {
-    func format(f: String) -> String {
-        return NSString(format: "%\(f)f", self)
+    func format(_ f: String) -> String {
+        return NSString(format: "%\(f)f" as NSString, self) as String
     }
 }
 
@@ -50,17 +50,17 @@ let histogramCalcIntervalFrames = 10 //calc one histogram every X frames
 class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     var initialized = false
-    private let whiteBalanceModes = ["Auto", "Sunny", "Cloudy", "Manual"]
-    private var capturedImage: UIImageView!
-    private var videoDevice: AVCaptureDevice!
-    private var captureSession: AVCaptureSession!
-    private var stillImageOutput: AVCaptureStillImageOutput!
-    private var videoDataOutput: AVCaptureVideoDataOutput!
+    fileprivate let whiteBalanceModes = ["Auto", "Sunny", "Cloudy", "Manual"]
+    fileprivate var capturedImage: UIImageView!
+    fileprivate var videoDevice: AVCaptureDevice!
+    fileprivate var captureSession: AVCaptureSession!
+    fileprivate var stillImageOutput: AVCaptureStillImageOutput!
+    fileprivate var videoDataOutput: AVCaptureVideoDataOutput!
     var previewLayer: AVCaptureVideoPreviewLayer!
     var flashOn = false
     var lastImage: UIImage?
     var frameImage: CGImage!
-    var isoMode: ISOMode = ISOMode.Auto
+    var isoMode: ISOMode = ISOMode.auto
     var exposureValue: Float = 0.5 // EV
     var currentISOValue: Float?
     var currentExposureDuration: Float64?
@@ -68,7 +68,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     var tempScale: CGFloat = 1.0
     var currentColorTemperature: AVCaptureWhiteBalanceTemperatureAndTintValues!
     var histogramFilter: CIFilter?
-    var _captureSessionQueue: dispatch_queue_t?
+    var _captureSessionQueue: DispatchQueue?
     var currentOutput: AVCaptureOutput!
     var useStillImageOutput = true // Must force to true in order to take photo
     var histogramDataImage: CIImage!
@@ -79,8 +79,8 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     var EVMax: Float = 15.0
     var EVMaxAdjusted: Float = 15.0
     var gettingFrame: Bool = false
-    var timer: dispatch_source_t!
-    var histogramRaw: [Int] = Array(count: histogramBuckets, repeatedValue: 0)
+    var timer: DispatchSourceTimer!
+    var histogramRaw: [Int] = Array(repeating: 0, count: histogramBuckets)
     var configLocked: Bool = false
     var currentHistogramFrameCount: Int = 0
     var photoQuality: NSNumber = 1.0 //From 0.0 to 1.0
@@ -90,87 +90,100 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     let EXPOSURE_DURATION_POWER:Float = 4.0 //the exposure slider gain
     let EXPOSURE_MINIMUM_DURATION:Float64 = 1.0/2000.0
     
+    func transformOrientation(_ orientation: UIInterfaceOrientation) -> AVCaptureVideoOrientation {
+        switch orientation {
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        default:
+            return .portrait
+        }
+    }
+    
     func initialize() {
         if !initialized {
             histogramRaw.reserveCapacity(histogramBuckets)
-            isoMode = .Auto
-            _captureSessionQueue = dispatch_queue_create("capture_session_queue", nil);
-            dispatch_async(_captureSessionQueue, { () -> Void in
+            isoMode = .auto
+            _captureSessionQueue = DispatchQueue(label: "capture_session_queue", attributes: []);
+            (_captureSessionQueue)?.async(execute: { () -> Void in
                 self.captureSession = AVCaptureSession()
                 self.captureSession.sessionPreset = AVCaptureSessionPresetPhoto
-                self.videoDevice = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo) //default is back camera
-                var error: NSError?
-                var input = AVCaptureDeviceInput(device: self.videoDevice, error: &error)
-                if error == nil && self.captureSession.canAddInput(input) {
-                    self.captureSession.addInput(input)
-                    // @Discussion:
-                    // Need AVCaptureVideoDataOutput for histogram
-                    // AND
-                    // AVCaptureStillImageOutput for photo capture
-                    // CoreImage wants BGRA pixel format
-                    let outputSettings: NSDictionary = [String(kCVPixelBufferPixelFormatTypeKey): NSNumber(integer: kCVPixelFormatType_32BGRA)]
-                    self.videoDataOutput = AVCaptureVideoDataOutput()
-                    self.videoDataOutput.videoSettings = outputSettings
-                    self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
-                    self.videoDataOutput.setSampleBufferDelegate(self, queue: self._captureSessionQueue)
+                self.videoDevice = AVCaptureDevice.defaultDevice(withMediaType: AVMediaTypeVideo) //default is back camera
+            
+                guard let input = try? AVCaptureDeviceInput(device: self.videoDevice),
+                      self.captureSession.canAddInput(input) else {
                     
-                    if self.captureSession.canAddOutput(self.videoDataOutput) {
-                        self.captureSession.addOutput(self.videoDataOutput) //add Video output
-                    }
+                    return
+                }
                 
-                    self.stillImageOutput = AVCaptureStillImageOutput()
-                    //using jpeg ourput
-                    if self.usingJPEGOutput {
-                        self.stillImageOutput.outputSettings = [AVVideoCodecKey: AVVideoCodecJPEG, AVVideoQualityKey: self.photoQuality]
-                    } else {
-                        //Try doing raw input
-                        self.stillImageOutput.outputSettings = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA]
-                    }
-                    
-                    self.stillImageOutput.highResolutionStillImageOutputEnabled = true
-                    self.currentOutput = self.stillImageOutput
-                    
-                    if self.captureSession.canAddOutput(self.stillImageOutput) {
-                        self.captureSession.addOutput(self.stillImageOutput)
-                        self.previewLayer = AVCaptureVideoPreviewLayer(session: self.captureSession)
-                        self.previewLayer.videoGravity = AVLayerVideoGravityResizeAspect
-                        self.previewLayer.connection?.videoOrientation = AVCaptureVideoOrientation.LandscapeLeft
-                        self.captureSession.startRunning()
-                        self.initialized = true
-                        dispatch_async(dispatch_get_main_queue(), { () -> Void in
-                            self.postInitilize()
-                        })
-                    }
-                    
-                   
-                    
-                    return ()
-                    //TODO: send notification
+            
+                self.captureSession.addInput(input)
+                // @Discussion:
+                // Need AVCaptureVideoDataOutput for histogram
+                // AND
+                // AVCaptureStillImageOutput for photo capture
+                // CoreImage wants BGRA pixel format
+                let outputSettings: NSDictionary = [String(kCVPixelBufferPixelFormatTypeKey): NSNumber(value: Int(kCVPixelFormatType_32BGRA))]
+                self.videoDataOutput = AVCaptureVideoDataOutput()
+                self.videoDataOutput.videoSettings = outputSettings as! [AnyHashable : Any]
+                self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
+                self.videoDataOutput.setSampleBufferDelegate(self, queue: self._captureSessionQueue)
+                
+                if self.captureSession.canAddOutput(self.videoDataOutput) {
+                    self.captureSession.addOutput(self.videoDataOutput) //add Video output
+                }
+            
+                self.stillImageOutput = AVCaptureStillImageOutput()
+                //using jpeg ourput
+                if self.usingJPEGOutput {
+                    self.stillImageOutput.outputSettings = [AVVideoCodecKey: AVVideoCodecJPEG, AVVideoQualityKey: self.photoQuality]
+                } else {
+                    //Try doing raw input
+                    self.stillImageOutput.outputSettings = [kCVPixelBufferPixelFormatTypeKey as AnyHashable: kCVPixelFormatType_32BGRA]
+                }
+                
+                self.stillImageOutput.isHighResolutionStillImageOutputEnabled = true
+                self.currentOutput = self.stillImageOutput
+                
+                if self.captureSession.canAddOutput(self.stillImageOutput) {
+                    self.captureSession.addOutput(self.stillImageOutput)
+                    self.previewLayer = AVCaptureVideoPreviewLayer(session: self.captureSession)
+                    self.previewLayer.videoGravity = AVLayerVideoGravityResizeAspect
+                    let orientation = self.transformOrientation(UIInterfaceOrientation(rawValue: UIApplication.shared.statusBarOrientation.rawValue)!)
+                    self.previewLayer.connection?.videoOrientation = orientation
+                    self.captureSession.startRunning()
+                    self.initialized = true
+                    DispatchQueue.main.async(execute: { () -> Void in
+                        self.postInitilize()
+                    })
                 }
             })
         }
     }
     
-    func captureOutput(captureOutput: AVCaptureOutput!, didOutputSampleBuffer sampleBuffer: CMSampleBuffer!, fromConnection connection: AVCaptureConnection!) {
-        var formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer)
-        var mediaType = CMFormatDescriptionGetMediaType(formatDesc)
-        if (Int(mediaType) != kCMMediaType_Audio) {
+    func captureOutput(_ captureOutput: AVCaptureOutput!, didOutputSampleBuffer sampleBuffer: CMSampleBuffer!, from connection: AVCaptureConnection!) {
+        let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer)
+        let mediaType = CMFormatDescriptionGetMediaType(formatDesc!)
+        if (mediaType != kCMMediaType_Audio) {
             //video
             //calc histogram every X frames
-            if ++currentHistogramFrameCount >= histogramCalcIntervalFrames {
+            currentHistogramFrameCount = currentHistogramFrameCount + 1
+            if currentHistogramFrameCount >= histogramCalcIntervalFrames {
                 //calc histogram
                 
-                let imageBuffer: CVImageBufferRef = CMSampleBufferGetImageBuffer(sampleBuffer)
-                var sourceImage = CIImage(CVPixelBuffer: imageBuffer, options: nil)
-                if sourceImage != nil {
-                    self.calcHistogram(sourceImage)
-                }
+                let imageBuffer: CVImageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
+                let sourceImage = CIImage(cvPixelBuffer: imageBuffer, options: nil)
+                self.calcHistogram(sourceImage)
+                
                 currentHistogramFrameCount = 0
             }
         }
     }
     
-    func runFilter(cameraImage: CIImage, filters: NSArray) -> CIImage? {
+    func runFilter(_ cameraImage: CIImage, filters: NSArray) -> CIImage? {
         var currentImage: CIImage?
         var activeInputs: [CIImage] = []
         
@@ -186,7 +199,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             }
         }
         
-        if CGRectIsEmpty(currentImage!.extent()) {
+        if currentImage!.extent.isEmpty {
             return nil
         }
         return currentImage;
@@ -196,31 +209,40 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         listenVolumeButton()
     }
     
-    func lockConfig(complete: () -> ()) {
-        if initialized {
-            configLocked = true
-            var error: NSError?
-            videoDevice.lockForConfiguration(&error)
-            if error == nil {
-                complete()
-                videoDevice.unlockForConfiguration()
-                self.postChangeCameraSetting()
-                configLocked = false
-            } else {
-                println("lockForConfiguration Failed \(error)")
-            }
+    func lockConfig(_ complete: () -> ()) {
+        guard  initialized else {
+            
+            return
         }
+        
+        configLocked = true
+        
+            
+        do {
+        
+            try videoDevice.lockForConfiguration()
+        } catch let error {
+            
+            print("lockForConfiguration Failed \(error)")
+            configLocked = false
+            return
+        }
+        
+        complete()
+        videoDevice.unlockForConfiguration()
+        self.postChangeCameraSetting()
+        configLocked = false
     }
     
-    func setWhiteBalanceMode(mode: whiteBalanceMode) {
+    func setWhiteBalanceMode(_ mode: whiteBalanceMode) {
         var wbMode: AVCaptureWhiteBalanceMode
         switch (mode) {
-        case .Auto:
-            wbMode = .ContinuousAutoWhiteBalance
+        case .auto:
+            wbMode = .continuousAutoWhiteBalance
         default:
-            wbMode = .Locked
+            wbMode = .locked
         }
-        var temperatureValue = mode.getValue()
+        let temperatureValue = mode.getValue()
         if (temperatureValue > -1) {
             //FixME: To add this feature
             //changeTemperatureRaw(Float(temperatureValue))
@@ -229,31 +251,31 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             if self.videoDevice.isWhiteBalanceModeSupported(wbMode) {
                 self.videoDevice.whiteBalanceMode = wbMode;
             } else {
-                println("White balance mode is not supported");
+                print("White balance mode is not supported");
             }
         }
     }
     
     //value: Take a normalized Value
-    func changeTemperature(value: Float) {
+    func changeTemperature(_ value: Float) {
         if value > 1.0 {
             var x = 1.0
             x = x + 3.0
         }
-        var mappedValue = value * 5000.0 + 3000.0 //map 0.0 - 1.0 to 3000 - 8000
+        let mappedValue = value * 5000.0 + 3000.0 //map 0.0 - 1.0 to 3000 - 8000
         changeTemperatureRaw(mappedValue)
     }
     
     //Take the actual temperature value
-    func changeTemperatureRaw(temperature: Float) {
+    func changeTemperatureRaw(_ temperature: Float) {
         self.currentColorTemperature = AVCaptureWhiteBalanceTemperatureAndTintValues(temperature: temperature, tint: 0.0)
         if initialized {
-            setWhiteBalanceGains(videoDevice.deviceWhiteBalanceGainsForTemperatureAndTintValues(self.currentColorTemperature))
+            setWhiteBalanceGains(videoDevice.deviceWhiteBalanceGains(for: self.currentColorTemperature))
         }
     }
     
     // Normalize the gain so it does not exceed
-    func normalizedGains(gains:AVCaptureWhiteBalanceGains) -> AVCaptureWhiteBalanceGains {
+    func normalizedGains(_ gains:AVCaptureWhiteBalanceGains) -> AVCaptureWhiteBalanceGains {
         var g = gains;
         g.redGain = max(1.0, g.redGain);
         g.greenGain = max(1.0, g.greenGain);
@@ -267,7 +289,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     }
     
     //Set the white balance gain
-    func setWhiteBalanceGains(gains: AVCaptureWhiteBalanceGains) {
+    func setWhiteBalanceGains(_ gains: AVCaptureWhiteBalanceGains) {
         lockConfig { () -> () in
             self.videoDevice.setWhiteBalanceModeLockedWithDeviceWhiteBalanceGains(self.normalizedGains(gains), completionHandler: nil)
         }
@@ -275,7 +297,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     
     // Available modes:
     // .Locked .AutoExpose .ContinuousAutoExposure .Custom
-    func changeExposureMode(mode: AVCaptureExposureMode) {
+    func changeExposureMode(_ mode: AVCaptureExposureMode) {
         lockConfig { () -> () in
             if self.videoDevice.isExposureModeSupported(mode) {
                 self.videoDevice.exposureMode = mode
@@ -283,17 +305,17 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         }
     }
     
-    func changeExposureDuration(value: Float) {
+    func changeExposureDuration(_ value: Float) {
         if initialized {
             let p = Float64(pow(value, EXPOSURE_DURATION_POWER)) // Apply power function to expand slider's low-end range
             let minDurationSeconds = Float64(max(CMTimeGetSeconds(videoDevice.activeFormat.minExposureDuration), EXPOSURE_MINIMUM_DURATION))
             let maxDurationSeconds = Float64(CMTimeGetSeconds(self.videoDevice.activeFormat.maxExposureDuration))
             let newDurationSeconds = Float64(p * (maxDurationSeconds - minDurationSeconds)) + minDurationSeconds // Scale from 0-1 slider range to actual duration
             
-            if (videoDevice.exposureMode == .Custom) {
+            if (videoDevice.exposureMode == .custom) {
                 lockConfig { () -> () in
                     
-                    if self.isoMode == .Auto {
+                    if self.isoMode == .auto {
                         // Going to calculate the correct exposure EV
                         // Keep EV stay the same
                         // Need to calculate the ISO based on current image exposure
@@ -304,17 +326,17 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
                         
                         //self.exposureValue = 14.45
                         self.currentISOValue = self.capISO(Float(self.exposureValue) / Float(newDurationSeconds))
-                        //println("iso=\(self.currentISOValue) expo=\(newDurationSeconds)")
+                        //print("iso=\(self.currentISOValue) expo=\(newDurationSeconds)")
                     } else if self.currentISOValue == nil{
                         self.currentISOValue = AVCaptureISOCurrent
                     }
                     self.currentExposureDuration = newDurationSeconds
                     let newExposureTime = CMTimeMakeWithSeconds(Float64(newDurationSeconds), 1000*1000*1000)
-                    self.videoDevice.setExposureModeCustomWithDuration(newExposureTime, ISO: self.currentISOValue!, completionHandler: nil)
+                    self.videoDevice.setExposureModeCustomWithDuration(newExposureTime, iso: self.currentISOValue!, completionHandler: nil)
                 }
             }
         } else {
-            println("not initilized. changeExposureDuration Fail")
+            print("not initilized. changeExposureDuration Fail")
         }
     }
     
@@ -328,10 +350,10 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         let k: Float64 = (0.902639 - 25.0) / (1.0 / 1999.0 - 1.0 / 79.0)
         let b: Float64 = 25.0 - k / 79.0
         EVMaxAdjusted = Float(k * Float64(currentExposureDuration!) + b)
-        println("currentExposureDuration \(currentExposureDuration) EVAdjusted=\(EVMaxAdjusted), EV= \(exposureValue)")
+        print("currentExposureDuration \(currentExposureDuration) EVAdjusted=\(EVMaxAdjusted), EV= \(exposureValue)")
     }
     
-    func zoomVideoOutput(scale: CGFloat) {
+    func zoomVideoOutput(_ scale: CGFloat) {
         tempScale = currentScale * scale
         tempScale = max(tempScale, 1.0)
         tempScale = min(tempScale, 4.0) //Max zoom 4x
@@ -342,20 +364,20 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             stillImageConnection.videoScaleAndCropFactor = tempScale
         }*/
         //this is for preview zoom
-        /*println("currentScale=\(tempScale)")
+        /*print("currentScale=\(tempScale)")
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.25)
         previewLayer.setAffineTransform(CGAffineTransformMakeScale(tempScale, tempScale))
         CATransaction.commit()
         */
-        if videoDevice.respondsToSelector("videoZoomFactor") && videoDevice.activeFormat.videoMaxZoomFactor > tempScale {
+        if videoDevice.responds(to: #selector(getter: AVCaptureDevice.videoZoomFactor)) && videoDevice.activeFormat.videoMaxZoomFactor > tempScale {
             lockConfig { () -> () in
                 self.videoDevice.videoZoomFactor = self.tempScale
             }
         }
     }
     
-    func changeEV(value: Float) {
+    func changeEV(_ value: Float) {
         adjustMaxEV()
         exposureValue = value * EVMaxAdjusted
         
@@ -371,16 +393,16 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             }
         }
         
-        if initialized && shootMode == 1 && self.isoMode == .Auto {
+        if initialized && shootMode == 1 && self.isoMode == .auto {
             //Need to auto adjust ISO
             self.currentISOValue = self.capISO(Float(exposureValue) / Float(currentExposureDuration!))
             lockConfig { () -> () in
-                self.videoDevice.setExposureModeCustomWithDuration(AVCaptureExposureDurationCurrent, ISO: self.currentISOValue!, completionHandler: nil)
+                self.videoDevice.setExposureModeCustomWithDuration(AVCaptureExposureDurationCurrent, iso: self.currentISOValue!, completionHandler: nil)
             }
         }
     }
     
-    func getCurrentValueNormalized(name: String) -> Float! {
+    func getCurrentValueNormalized(_ name: String) -> Float! {
         var ret: Float = 0.5
         if name == "EV" {
             adjustMaxEV()
@@ -398,7 +420,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             }
         } else if name == "WB" { //White balance
             if self.currentColorTemperature != nil {
-                println("WB currentval = \(currentColorTemperature.temperature)")
+                print("WB currentval = \(currentColorTemperature.temperature)")
                 ret = (currentColorTemperature.temperature - 3000.0) / 5000.0
             }
         }
@@ -407,7 +429,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         return ret
     }
     
-    func capISO(value: Float) -> Float {
+    func capISO(_ value: Float) -> Float {
         if value > self.videoDevice.activeFormat.maxISO{
             return self.videoDevice.activeFormat.maxISO
         } else if value < self.videoDevice.activeFormat.minISO{
@@ -416,7 +438,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         return value
     }
     
-    func calcISOFromNormalizedValue(value: Float) -> Float {
+    func calcISOFromNormalizedValue(_ value: Float) -> Float {
         if initialized {
             var _value = value
             if _value > 1.0 {
@@ -432,37 +454,46 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     }
     
     //input value from 0.0 to 1.0
-    func changeISO(value: Float) {
+    func changeISO(_ value: Float) {
         let newValue = calcISOFromNormalizedValue(value)
         lockConfig { () -> () in
             self.currentISOValue = newValue
-            self.videoDevice.setExposureModeCustomWithDuration(AVCaptureExposureDurationCurrent, ISO: newValue, completionHandler: nil)
+            self.videoDevice.setExposureModeCustomWithDuration(AVCaptureExposureDurationCurrent, iso: newValue, completionHandler: nil)
         }
     }
     
-    func setFlashMode(on: Bool) {
+    func setFlashMode(_ on: Bool) {
         self.flashOn = on
     }
     
     func playShutterSound() {
-        let path = NSBundle.mainBundle().pathForResource("shutter_sound", ofType: "mp3")
-        var theAudio = AVAudioPlayer(contentsOfURL: NSURL(fileURLWithPath: path!), error: nil)
-        theAudio.prepareToPlay()
-        theAudio.volume = 1.0
-        theAudio.play()
+        
+        let path = Bundle.main.path(forResource: "shutter_sound", ofType: "mp3")
+        let url = URL(fileURLWithPath: path!)
+        let theAudio = try? AVAudioPlayer(contentsOf: url)
+    
+        theAudio?.prepareToPlay()
+        theAudio?.volume = 1.0
+        theAudio?.play()
     }
     
     func takePhotoUsingStillImageOutput() {
         // Must be initialized
-        if let videoConnection = currentOutput!.connectionWithMediaType(AVMediaTypeVideo) {
-            videoConnection.videoOrientation = AVCaptureVideoOrientation.LandscapeLeft
-            stillImageOutput?.captureStillImageAsynchronouslyFromConnection(videoConnection, completionHandler: {(sampleBuffer, error) in
+        if let videoConnection = currentOutput!.connection(withMediaType: AVMediaTypeVideo) {
+            videoConnection.videoOrientation = AVCaptureVideoOrientation.landscapeLeft
+            stillImageOutput?.captureStillImageAsynchronously(from: videoConnection, completionHandler: {(sampleBuffer, error) in
                 if (sampleBuffer != nil) {
                     if self.usingJPEGOutput {
-                        var imageData = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(sampleBuffer)
-                        var dataProvider = CGDataProviderCreateWithCFData(imageData)
-                        var cgImageRef = CGImageCreateWithJPEGDataProvider(dataProvider, nil, true, kCGRenderingIntentDefault)
-                        self.lastImage = UIImage(CGImage: cgImageRef, scale: 1.0, orientation: UIImageOrientation.Right)
+                        let imageData: Data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(sampleBuffer)
+                        
+                        if let dataProvider = CGDataProvider(data: imageData as CFData),
+                           let cgImageRef = CGImage(jpegDataProviderSource: dataProvider,
+                                                    decode: nil,
+                                                    shouldInterpolate: true,
+                                                    intent: .defaultIntent) {
+                            
+                            self.lastImage = UIImage(cgImage: cgImageRef, scale: 1.0, orientation: .right)
+                        }
                     } else {
                         //Raw ouput
                         
@@ -470,10 +501,10 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
                     
                     //save to camera roll
                     self.beforeSavePhoto()
-                    UIImageWriteToSavedPhotosAlbum(self.lastImage, nil, nil, nil)
+                    UIImageWriteToSavedPhotosAlbum(self.lastImage!, nil, nil, nil)
                     self.postSavePhoto()
                     //self.playShutterSound()
-                    println("Take Photo")
+                    print("Take Photo")
                 }
             })
         }
@@ -482,25 +513,32 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     //save photo to camera roll
     func takePhoto() {
         if initialized {
-            NSTimer.scheduledTimerWithTimeInterval(1.0, target: self, selector: "takePhotoUsingStillImageOutput", userInfo: nil, repeats: false)
+            Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(AVCoreViewController.takePhotoUsingStillImageOutput), userInfo: nil, repeats: false)
         } else {
-            println("take photo failed. not initialized")
+            print("take photo failed. not initialized")
         }
     }
     
-    func getFrame(complete: () -> ()) {
+    func getFrame(_ complete: @escaping () -> ()) {
         if initialized && !self.gettingFrame {
-            dispatch_async(self._captureSessionQueue, { () -> Void in
+            (self._captureSessionQueue)?.async(execute: { () -> Void in
                 self.gettingFrame = true
-                if let videoConnection = self.currentOutput!.connectionWithMediaType(AVMediaTypeVideo) {
-                    videoConnection.videoOrientation = AVCaptureVideoOrientation.Portrait
+                if let videoConnection = self.currentOutput!.connection(withMediaType: AVMediaTypeVideo) {
+                    videoConnection.videoOrientation = AVCaptureVideoOrientation.portrait
                     if self.useStillImageOutput {
-                        self.stillImageOutput?.captureStillImageAsynchronouslyFromConnection(videoConnection, completionHandler: {(sampleBuffer, error) in
+                        self.stillImageOutput?.captureStillImageAsynchronously(from: videoConnection, completionHandler: {(sampleBuffer, error) in
                             if (sampleBuffer != nil) {
-                                var imageData = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(sampleBuffer)
-                                var dataProvider = CGDataProviderCreateWithCFData(imageData)
-                                self.frameImage = CGImageCreateWithJPEGDataProvider(dataProvider, nil, true, kCGRenderingIntentDefault)
-                                complete()
+                                let imageData: Data  = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(sampleBuffer)
+                                
+                                if let dataProvider = CGDataProvider(data: imageData as CFData) {
+                                    
+                                    self.frameImage = CGImage(jpegDataProviderSource: dataProvider,
+                                                              decode: nil,
+                                                              shouldInterpolate: true,
+                                                              intent: .defaultIntent)
+                                    
+                                }
+                                
                                 self.gettingFrame = false
                             }
                         })
@@ -516,42 +554,50 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     
     //Deprecated.
     func startTimer() {
-        let queue = dispatch_queue_create("com.procam.timer", nil)
-        timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue)
-        dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC, 1 * NSEC_PER_SEC) // every 5 seconds, with leeway of 1 second
-        dispatch_source_set_event_handler(timer) {
+        let queue = DispatchQueue(label: "com.procam.timer", attributes: [])
+        timer = DispatchSource.makeTimerSource(flags: DispatchSource.TimerFlags(rawValue: 0), queue: queue)
+        timer.scheduleRepeating(deadline: DispatchTime.now() + .seconds(1000), interval: .seconds(1), leeway: .seconds(1))
+//        setTimer(start: , interval: 1 * NSEC_PER_SEC, leeway: 1 * NSEC_PER_SEC) // every 5 seconds, with leeway of 1 second
+        timer.setEventHandler {
             if !self.configLocked {
                 //self.calcHistogram()
             }
         }
-        dispatch_resume(timer)
+        timer.resume()
     }
     
     func stopTimer() {
-        dispatch_source_cancel(timer)
+        timer.cancel()
         timer = nil
     }
     
     // scaleDiv = divide by Int
-    func scaleDownCGImage(image: CGImage, scale: Float) -> CGImage!{
-        var scaleDiv = UInt(1.0 / scale)
-        let width = CGImageGetWidth(image) / scaleDiv
-        let height = CGImageGetHeight(image) / scaleDiv
-        let bitsPerComponent = CGImageGetBitsPerComponent(image)
-        let bytesPerRow = CGImageGetBytesPerRow(image)
-        let colorSpace = CGImageGetColorSpace(image)
-        let bitmapInfo = CGImageGetBitmapInfo(image)
-        let context = CGBitmapContextCreate(nil, width, height, bitsPerComponent, bytesPerRow, colorSpace, bitmapInfo)
-        CGContextSetInterpolationQuality(context, kCGInterpolationMedium)
+    func scaleDownCGImage(_ image: CGImage, scale: Float) -> CGImage!{
+        let scaleDiv = Int(1.0 / scale)
+        let width = image.width / scaleDiv
+        let height = image.height / scaleDiv
+        let bitsPerComponent = image.bitsPerComponent
+        let bytesPerRow = image.bytesPerRow
+        let colorSpace = image.colorSpace!
+        let bitmapInfo = image.bitmapInfo.rawValue
+        let context = CGContext(data: nil,
+                                width: width,
+                                height: height,
+                                bitsPerComponent: bitsPerComponent,
+                                bytesPerRow: bytesPerRow,
+                                space: colorSpace,
+                                bitmapInfo: bitmapInfo)!
+        
+        context.interpolationQuality = .medium
         let imgSize = CGSize(width: Int(width), height: Int(height))
-        CGContextDrawImage(context, CGRect(origin: CGPointZero, size: imgSize), image)
-        //println("scaled image for histogram calc \(imgSize)")
-        return CGBitmapContextCreateImage(context)
+        context.draw(image, in: CGRect(origin: CGPoint.zero, size: imgSize))
+        //print("scaled image for histogram calc \(imgSize)")
+        return context.makeImage()
     }
     
-    func calcHistogram(ciImage: CIImage!) {
+    func calcHistogram(_ ciImage: CIImage!) {
         if initialized {
-            dispatch_async(self._captureSessionQueue, { () -> Void in
+            (self._captureSessionQueue)?.async(execute: { () -> Void in
                 if ciImage != nil {
                     /* //Was trying to use a filter but doesn't work out
                     let params: NSDictionary = [
@@ -566,7 +612,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
                     
                     self.getHistogramRaw(ciImage)
                     
-                    dispatch_async(dispatch_get_main_queue(), { () -> Void in
+                    DispatchQueue.main.async(execute: { () -> Void in
                         
                         self.postCalcHistogram()
                     })
@@ -575,64 +621,63 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         }
     }
     
-    func convertCIImageToCGImage(inputImage: CIImage) -> CGImage! {
+    func convertCIImageToCGImage(_ inputImage: CIImage) -> CGImage! {
         let context = CIContext(options: nil)
-        if context != nil {
-            return context.createCGImage(inputImage, fromRect: inputImage.extent())
-        }
-        return nil
+
+        return context.createCGImage(inputImage, from: inputImage.extent)
+        
     }
     
-    func getHistogramRaw(dataImage: CIImage) {
+    func getHistogramRaw(_ dataImage: CIImage) {
         var cgImage = convertCIImageToCGImage(dataImage)
-        cgImage = scaleDownCGImage(cgImage, scale: 0.5)
-        var imageData: CFDataRef = CGDataProviderCopyData(CGImageGetDataProvider(cgImage))
-        var dataInput: UnsafePointer<UInt8> = CFDataGetBytePtr(imageData)
-        var dataInputMutable = UnsafeMutablePointer<Void>(dataInput)
-        var height: vImagePixelCount = CGImageGetHeight(cgImage)
-        var width: vImagePixelCount = CGImageGetWidth(cgImage)
-        var vImageBuffer = vImage_Buffer(data: dataInputMutable, height: height, width: width, rowBytes: CGImageGetBytesPerRow(cgImage))
-        var r = UnsafeMutablePointer<vImagePixelCount>.alloc(256)
-        var g = UnsafeMutablePointer<vImagePixelCount>.alloc(256)
-        var b = UnsafeMutablePointer<vImagePixelCount>.alloc(256)
-        var a = UnsafeMutablePointer<vImagePixelCount>.alloc(256)
-        var histogram = UnsafeMutablePointer<UnsafeMutablePointer<vImagePixelCount>>.alloc(4)
+        cgImage = scaleDownCGImage(cgImage!, scale: 0.5)
+        let imageData: CFData = cgImage!.dataProvider!.data!
+        let dataInput: UnsafePointer<UInt8> = CFDataGetBytePtr(imageData)
+        let dataInputMutable = UnsafeMutableRawPointer(mutating: dataInput)
+        let height: vImagePixelCount = vImagePixelCount(cgImage!.height)
+        let width: vImagePixelCount = vImagePixelCount(cgImage!.width)
+        var vImageBuffer = vImage_Buffer(data: dataInputMutable, height: height, width: width, rowBytes: (cgImage?.bytesPerRow)!)
+        let r = UnsafeMutablePointer<vImagePixelCount>.allocate(capacity: 256)
+        let g = UnsafeMutablePointer<vImagePixelCount>.allocate(capacity: 256)
+        let b = UnsafeMutablePointer<vImagePixelCount>.allocate(capacity: 256)
+        let a = UnsafeMutablePointer<vImagePixelCount>.allocate(capacity: 256)
+        let histogram = UnsafeMutablePointer<UnsafeMutablePointer<vImagePixelCount>?>.allocate(capacity: 4)
         histogram[0] = r
         histogram[1] = g
         histogram[2] = b
         histogram[3] = a
         
-        var error:vImage_Error = vImageHistogramCalculation_ARGB8888(&vImageBuffer, histogram, 0);
+        let error: vImage_Error = vImageHistogramCalculation_ARGB8888(&vImageBuffer, histogram, 0);
         
         if (error == kvImageNoError) {
             let pixCountRefNum: Double = 1.0
             var totalExpoVal = 0.0
             //clear histogramRaw
-            histogramRaw = Array(count: histogramBuckets, repeatedValue: 0)
-            for var j = 0; j < 256; j++ {
-                let currentVal = Double(histogram[0][j] + histogram[1][j] + histogram[2][j]) / pixCountRefNum
+            histogramRaw = Array(repeating: 0, count: histogramBuckets)
+            for j in 0 ..< 256 {
+                let currentVal = Double(histogram[0]![j] + histogram[1]![j] + histogram[2]![j]) / pixCountRefNum
                 if currentVal > 0 {
                     //find out which bucket it is in
                     let bucketNum = j / histogramBuckets
                     histogramRaw[bucketNum] += Int(currentVal)
-                    //println("j=\(j),\(currentVal)")
+                    //print("j=\(j),\(currentVal)")
                     if self.enableLastHistogramEV {
                         totalExpoVal += currentVal * Double(j)
                     }
                 }
             }
-            //println("totalExpoVal=\(totalExpoVal)")
+            //print("totalExpoVal=\(totalExpoVal)")
             if self.enableLastHistogramEV {
                 lastHistogramEV = totalExpoVal
             }
             //delloc
-            r.dealloc(256)
-            g.dealloc(256)
-            b.dealloc(256)
-            a.dealloc(256)
-            histogram.dealloc(4)
+            r.deallocate(capacity: 256)
+            g.deallocate(capacity: 256)
+            b.deallocate(capacity: 256)
+            a.deallocate(capacity: 256)
+            histogram.deallocate(capacity: 4)
         } else {
-            println("Histogram vImage error: \(error)")
+            print("Histogram vImage error: \(error)")
         }
     }
     
@@ -640,15 +685,15 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         
     }
     
-    func generateHistogramImageFromDataImage(dataImage: CIImage!) -> UIImage! {
+    func generateHistogramImageFromDataImage(_ dataImage: CIImage!) -> UIImage! {
         if dataImage != nil {
             let context = CIContext(options: nil)
             let params = [String(kCIInputImageKey): dataImage]
             let filter = CIFilter(name: "CIHistogramDisplayFilter", withInputParameters: params)
-            var outputImage = filter.outputImage
-            let outExtent = outputImage.extent()
-            let cgImage = context.createCGImage(outputImage, fromRect: outExtent)
-            let outUIImage = UIImage(CGImage: cgImage)
+            let outputImage = filter?.outputImage
+            let outExtent = outputImage?.extent
+            let cgImage = context.createCGImage(outputImage!, from: outExtent!)
+            let outUIImage = UIImage(cgImage: cgImage!)
             return outUIImage
         }
         return nil
@@ -661,12 +706,12 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
 
     
     
-    func applyFilter(image: CIImage) {
-        var filter = CIFilter(name: "CISepiaTone")
-        filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(0.8, forKey: kCIInputIntensityKey)
-        let result = filter.valueForKey(kCIOutputImageKey) as CIImage
-        let context: CGRect = result.extent()
+    func applyFilter(_ image: CIImage) {
+        let filter = CIFilter(name: "CISepiaTone")
+        filter?.setValue(image, forKey: kCIInputImageKey)
+        filter?.setValue(0.8, forKey: kCIInputIntensityKey)
+        let result = filter?.value(forKey: kCIOutputImageKey) as! CIImage
+        let _ = result.extent
     }
     
     func beforeSavePhoto() {
@@ -681,7 +726,7 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         
     }
     
-    func FloatToDenominator(value: Float) -> Int {
+    func FloatToDenominator(_ value: Float) -> Int {
         if value > 0.0 {
             let denominator = 1.0 / value
             return Int(denominator)
@@ -691,17 +736,20 @@ class AVCoreViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     
     func listenVolumeButton(){
         let audioSession = AVAudioSession.sharedInstance()
-        audioSession.setActive(true, error: nil)
+        try? audioSession.setActive(true)
         audioSession.addObserver(self, forKeyPath: "outputVolume",
-            options: NSKeyValueObservingOptions.New, context: nil)
+            options: NSKeyValueObservingOptions.new, context: nil)
         //hide volumn view
         let rect = CGRect(x: -500.0, y: -500.0, width: 0, height: 0)
-        var volumeView: MPVolumeView = MPVolumeView(frame: rect)
+        let volumeView: MPVolumeView = MPVolumeView(frame: rect)
         view.addSubview(volumeView)
     }
     
-    override func observeValueForKeyPath(keyPath: String, ofObject object: AnyObject,
-        change: [NSObject : AnyObject], context: UnsafeMutablePointer<Void>) {
+    public func observeValue(forKeyPath keyPath: String,
+                               of object: AnyObject,
+                               change: [AnyHashable: Any],
+                               context: UnsafeMutableRawPointer) {
+        
             if keyPath == "outputVolume"{
                 takePhoto()
             }

@@ -44,9 +44,9 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
 
     
     @IBOutlet weak var asmButton: UIButton!
-    let enabledLabelColor = UIColor.whiteColor()
-    let disabledLabelColor = UIColor.grayColor()
-    let currentlyEditedLabelColor = UIColor.yellowColor()
+    let enabledLabelColor = UIColor.white
+    let disabledLabelColor = UIColor.gray
+    let currentlyEditedLabelColor = UIColor.yellow
     
     // Setting buttons
     @IBOutlet weak var wbButton: UIButton!
@@ -58,15 +58,15 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
     
     var gridEnabled: Bool = false
     
-    var scrollViewInitialX: CGFloat?
+    var scrollViewInitialX: CGFloat = 0
     
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
-        let settingsValueTmp = NSUserDefaults.standardUserDefaults().objectForKey("settingsStore") as? [String: Bool]
+        let settingsValueTmp = UserDefaults.standard.object(forKey: "settingsStore") as? [String: Bool]
         settingsUpdated(settingsValueTmp)
         //Listen to notif
-        NSNotificationCenter.defaultCenter().addObserver(self, selector: "settingsUpdatedObserver:", name: "settingsUpdatedNotification", object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(MainViewController.settingsUpdatedObserver(_:)), name: NSNotification.Name(rawValue: "settingsUpdatedNotification"), object: nil)
         
         // Make the "take photo" button circular
         takePhotoButton.layer.cornerRadius = (takePhotoButton.bounds.size.height/2)
@@ -74,14 +74,14 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         
         // Make the ASM button have a border and be circular
         asmButton.layer.borderWidth = 2.0
-        asmButton.layer.borderColor = UIColor.grayColor().CGColor
+        asmButton.layer.borderColor = UIColor.gray.cgColor
         asmButton.layer.cornerRadius = (asmButton.bounds.size.height/2)
         shootMode = 0 //TODO: persist this
         
         // Handle swiping on scroll view to hide
-        var recognizer: UISwipeGestureRecognizer = UISwipeGestureRecognizer(target: self, action: "scrollSwipedRight")
+        let recognizer: UISwipeGestureRecognizer = UISwipeGestureRecognizer(target: self, action: #selector(MainViewController.scrollSwipedRight))
         self.scrollView.addGestureRecognizer(recognizer)
-        recognizer.direction = UISwipeGestureRecognizerDirection.Right;
+        recognizer.direction = UISwipeGestureRecognizerDirection.right;
         self.scrollView.delaysContentTouches = true
         
         let buttonTypesForGestures = [
@@ -92,41 +92,41 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         ]
         
         for (action, button) in buttonTypesForGestures {
-            var newRecognizer: UISwipeGestureRecognizer = UISwipeGestureRecognizer(target: self, action: Selector(action))
-            newRecognizer.direction = UISwipeGestureRecognizerDirection.Left;
-            button.addGestureRecognizer(newRecognizer)
+            let newRecognizer: UISwipeGestureRecognizer = UISwipeGestureRecognizer(target: self, action: Selector(action))
+            newRecognizer.direction = UISwipeGestureRecognizerDirection.left;
+            button?.addGestureRecognizer(newRecognizer)
         }
         
         updateASM()
     }
     
-    func settingsUpdated(settingsVal: [String: Bool]!) {
+    func settingsUpdated(_ settingsVal: [String: Bool]!) {
         if settingsVal != nil && settingsVal!["Grid"] != nil {
             gridEnabled = settingsVal["Grid"]!
             if gridEnabled {
                 //Set BG color to none
-                gridView.opaque = false
-                gridView.backgroundColor = UIColor.clearColor()
+                gridView.isOpaque = false
+                gridView.backgroundColor = UIColor.clear
             }
-            gridView.hidden = !gridEnabled
+            gridView.isHidden = !gridEnabled
         }
     }
     
-    func settingsUpdatedObserver(notification: NSNotification) {
+    func settingsUpdatedObserver(_ notification: Notification) {
         let settingsVal = notification.userInfo as? [String: Bool]
         settingsUpdated(settingsVal)
     }
     
     func scrollSwipedRight() {
-        println("Scroll swiped right")
+        print("Scroll swiped right")
         destroyMeterView()
     }
 
-    override func viewWillAppear(animated: Bool) {
+    override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         super.initialize()
-        histogramView.opaque = false
-        histogramView.backgroundColor = UIColor.clearColor()
+        histogramView.isOpaque = false
+        histogramView.backgroundColor = UIColor.clear
         scrollView.delegate = self
     }
     
@@ -137,24 +137,25 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         }
     }
     
-    override func supportedInterfaceOrientations() -> Int {
-        return Int(UIInterfaceOrientationMask.LandscapeLeft.rawValue)
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        
+        return UIInterfaceOrientationMask.landscapeLeft
     }
     
-    override func shouldAutorotate() -> Bool {
+    override var shouldAutorotate : Bool {
         return false
     }
     
     func initView() {
-        previewView.layer.insertSublayer(super.previewLayer, atIndex: 0)
+        previewView.layer.insertSublayer(super.previewLayer, at: 0)
         previewLayer.frame = previewView.bounds
         //tmp
-        setWhiteBalanceMode(.Temperature(5000))
-        changeExposureMode(AVCaptureExposureMode.AutoExpose)
+        setWhiteBalanceMode(.temperature(5000))
+        changeExposureMode(AVCaptureExposureMode.autoExpose)
         updateASM()
     }
     
-    override func viewDidAppear(animated: Bool) {
+    override func viewDidAppear(_ animated: Bool) {
         viewAppeared = true
         if super.initialized {
             initView()
@@ -166,75 +167,75 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         // Dispose of any resources that can be recreated.
     }
     
-    @IBAction func didTapAlbumButton(sender: UIButton) {
-        self.performSegueWithIdentifier("cameraRollSegue", sender: self)
+    @IBAction func didTapAlbumButton(_ sender: UIButton) {
+        self.performSegue(withIdentifier: "cameraRollSegue", sender: self)
     }
     
-    @IBAction func didPressTakePhoto(sender: AnyObject) {
+    @IBAction func didPressTakePhoto(_ sender: AnyObject) {
         takePhoto()
         beforeSavePhoto()
     }
-    @IBAction func didZoom(sender: UIPinchGestureRecognizer) {
+    @IBAction func didZoom(_ sender: UIPinchGestureRecognizer) {
         var scale = sender.scale
-        println(scale)
+        print(scale)
         //TODO: Detect all touches are in preview layer
-        if sender.state == UIGestureRecognizerState.Began {
+        if sender.state == UIGestureRecognizerState.began {
             
-        } else if sender.state == UIGestureRecognizerState.Changed {
+        } else if sender.state == UIGestureRecognizerState.changed {
             zoomVideoOutput(scale)
-        } else if sender.state == UIGestureRecognizerState.Ended {
+        } else if sender.state == UIGestureRecognizerState.ended {
             currentScale = tempScale
         }
         
     }
     
-    func toggleISO(enabled: Bool) {
+    func toggleISO(_ enabled: Bool) {
         if enabled {
             isoValueLabel.textColor = enabledLabelColor
-            isoSlider.hidden = false
+            isoSlider.isHidden = false
         } else {
             isoValueLabel.textColor = disabledLabelColor
-            isoSlider.hidden = true
+            isoSlider.isHidden = true
         }
         //hack force hidden
-        isoSlider.hidden = true
+        isoSlider.isHidden = true
     }
     
-    func toggleExposureDuration(enabled: Bool) {
+    func toggleExposureDuration(_ enabled: Bool) {
         if enabled {
             shutterSpeedLabel.textColor = enabledLabelColor
-            exposureDurationSlider.hidden = false
+            exposureDurationSlider.isHidden = false
         } else {
             shutterSpeedLabel.textColor = disabledLabelColor
-            exposureDurationSlider.hidden = true
+            exposureDurationSlider.isHidden = true
         }
         //hack force hidden
-        exposureDurationSlider.hidden = true
+        exposureDurationSlider.isHidden = true
     }
     
-    func toggleExposureValue(enabled: Bool) {
+    func toggleExposureValue(_ enabled: Bool) {
         if enabled {
             evValue.textColor = enabledLabelColor
-            exposureValueSlider.hidden = false
+            exposureValueSlider.isHidden = false
         } else {
             evValue.textColor = disabledLabelColor
-            exposureValueSlider.hidden = true
+            exposureValueSlider.isHidden = true
         }
         //hack force hidden
-        exposureValueSlider.hidden = true
+        exposureValueSlider.isHidden = true
     }
     
-    func toggleWhiteBalance(enabled: Bool) {
+    func toggleWhiteBalance(_ enabled: Bool) {
         if enabled {
-            whiteBalanceSlider.hidden = false
+            whiteBalanceSlider.isHidden = false
         } else {
-            whiteBalanceSlider.hidden = true
+            whiteBalanceSlider.isHidden = true
         }
         //hack force hidden
-        whiteBalanceSlider.hidden = true
+        whiteBalanceSlider.isHidden = true
     }
     
-    @IBAction func didPressFlash(sender: UIButton) {
+    @IBAction func didPressFlash(_ sender: UIButton) {
         if flashOn {
             toggleFlashUI(false)
         } else {
@@ -243,11 +244,11 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         setFlashMode(!flashOn)
     }
     
-    func toggleFlashUI(on: Bool) {
+    func toggleFlashUI(_ on: Bool) {
         if on {
-            flashBtn.setImage(UIImage(named: "flash"), forState: .Normal)
+            flashBtn.setImage(UIImage(named: "flash"), for: UIControlState())
         } else {
-            flashBtn.setImage(UIImage(named: "no-flash"), forState: .Normal)
+            flashBtn.setImage(UIImage(named: "no-flash"), for: UIControlState())
         }
     }
     
@@ -256,25 +257,25 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         switch shootMode {
         case 1:
             buttonTitle = "Tv"
-            changeExposureMode(.Custom)
+            changeExposureMode(.custom)
             changeExposureDuration(getCurrentValueNormalized("SS"))
             changeEV(getCurrentValueNormalized("EV"))
-            isoMode = .Auto
+            isoMode = .auto
             toggleISO(false)
             toggleExposureDuration(true)
             toggleExposureValue(true)
         case 2:
             buttonTitle = "M"
-            changeExposureMode(.Custom)
+            changeExposureMode(.custom)
             changeExposureDuration(getCurrentValueNormalized("SS"))
-            isoMode = .Custom
+            isoMode = .custom
             changeISO(getCurrentValueNormalized("ISO"))
             toggleISO(true)
             toggleExposureDuration(true)
             toggleExposureValue(false)
         default:
             buttonTitle = "A"
-            changeExposureMode(.AutoExpose)
+            changeExposureMode(.autoExpose)
             currentISOValue = nil
             currentExposureDuration = nil
             toggleISO(false)
@@ -282,13 +283,14 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
             toggleExposureValue(false)
         }
         changeTemperature(getCurrentValueNormalized("WB"))
-        asmButton.setTitle(buttonTitle, forState: .Normal)
+        asmButton.setTitle(buttonTitle, for: UIControlState())
     }
     
-    @IBAction func didPressASM(sender: AnyObject) {
+    @IBAction func didPressASM(_ sender: AnyObject) {
         print("Pressed ASM cycler")
-        scrollView.hidden = true
-        if ++shootMode! > 2 {
+        scrollView.isHidden = true
+        shootMode = shootMode + 1
+        if shootMode! > 2 {
             shootMode = 0
         }
         updateASM()
@@ -296,7 +298,7 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
     }
     
     
-    @IBAction func didMoveISO(sender: UISlider) {
+    @IBAction func didMoveISO(_ sender: UISlider) {
         if shootMode == 2 {
             //only works on manual mode
             let value = sender.value
@@ -304,16 +306,16 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         }
     }
     
-    @IBAction func didMoveShutterSpeed(sender: UISlider) {
+    @IBAction func didMoveShutterSpeed(_ sender: UISlider) {
         changeExposureDuration(sender.value)
     }
-    @IBAction func didMoveWhiteBalance(sender: UISlider) {
+    @IBAction func didMoveWhiteBalance(_ sender: UISlider) {
         //Todo move this to different
         let value = sender.value
-        println(value)
+        print(value)
         changeTemperature(value)
     }
-    @IBAction func didMoveEV(sender: UISlider) {
+    @IBAction func didMoveEV(_ sender: UISlider) {
         changeEV(sender.value)
     }
     
@@ -321,7 +323,7 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         activateEvControl()
     }
     
-    @IBAction func didPressEvButton(sender: UIButton) {
+    @IBAction func didPressEvButton(_ sender: UIButton) {
         activateEvControl()
     }
     
@@ -335,8 +337,8 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         activateIsoControl()
     }
     
-    @IBAction func didPressIsoButton(sender: UIButton) {
-        println("Pressed ISO")
+    @IBAction func didPressIsoButton(_ sender: UIButton) {
+        print("Pressed ISO")
         activateIsoControl()
     }
     
@@ -350,8 +352,8 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         activateShutterControl()
     }
     
-    @IBAction func didPressShutterButton(sender: UIButton) {
-        println("Pressed Shutter")
+    @IBAction func didPressShutterButton(_ sender: UIButton) {
+        print("Pressed Shutter")
         activateShutterControl()
     }
     
@@ -365,13 +367,13 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         activateWbControl()
     }
     
-    @IBAction func didPressWBButton(sender: UIButton) {
-        println("Pressed WB")
+    @IBAction func didPressWBButton(_ sender: UIButton) {
+        print("Pressed WB")
         activateWbControl()
     }
     
     func activateWbControl() {
-        println("Toggling wb")
+        print("Toggling wb")
         onPressedControl("WB")
     }
     
@@ -384,13 +386,13 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
             case "EV":
                 evValue.textColor = currentlyEditedLabelColor
         default:
-            wbIconButton.setImage(UIImage(named: "wb_sunny_yellow"), forState: UIControlState.Normal)
+            wbIconButton.setImage(UIImage(named: "wb_sunny_yellow"), for: UIControlState())
         }
         
     }
     
-    func onPressedControl(controlName: String) {
-        if (scrollView.hidden) {
+    func onPressedControl(_ controlName: String) {
+        if (scrollView.isHidden) {
             self.currentSetAttr = controlName
             openMeterView()
         } else {
@@ -406,7 +408,7 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
     }
     
     func toggleMeterView() {
-        if (scrollView.hidden) {
+        if (scrollView.isHidden) {
             openMeterView()
         } else {
             destroyMeterView()
@@ -420,42 +422,47 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
     
     func initMeterView() {
         let scrollViewAlpha: CGFloat = 0.6
-        scrollView.hidden = false
+        scrollView.isHidden = false
         //kill scrolling if any
         let offset = scrollView.contentOffset
         scrollView.setContentOffset(offset, animated: false)
-        meterCenter.hidden = false
+        meterCenter.isHidden = false
         //important for scroll view to work properly
         scrollView.contentSize = meterView.frame.size
-        let value = getCurrentValueNormalized(currentSetAttr)
-        println(value)
+        let value = getCurrentValueNormalized(currentSetAttr)!
+        
+        print(value)
         let scrollMax = scrollView.contentSize.height -
             scrollView.frame.height
         scrollView.contentOffset.y = CGFloat(value) * scrollMax
         
         //Changing scrollView background to overlay style
-        scrollView.opaque = false
+        scrollView.isOpaque = false
         scrollView.backgroundColor = UIColor(white: 0.3, alpha: 0.5)
         
         //hide the image. Fixme: should remove the image from storyboard
-        self.meterImage.hidden = true
+        self.meterImage.isHidden = true
         //self.meterImage.image = drawMeterImage()
         
-        meterView.opaque = false //meter view is transparent
+        meterView.isOpaque = false //meter view is transparent
         
         //meterView.frame = CGRectMake(0, 0, meterView.frame.width, 300.0)
         //meterView.bounds = meterView.frame
-        //println("meterView: Frame \(meterView.bounds)")
+        //print("meterView: Frame \(meterView.bounds)")
         
         // To refresh the view, to call drawRect
         meterView.setNeedsDisplay()
         
-        scrollViewInitialX = scrollViewInitialX ?? self.scrollView.center.x
-        self.scrollView.center.x = scrollViewInitialX! + 35.0
-        UIView.animateWithDuration(0.25, delay: 0.0, usingSpringWithDamping: 0.5,
-            initialSpringVelocity: 0.0, options: nil, animations: {
+        scrollViewInitialX = scrollViewInitialX != 0 ? scrollViewInitialX : self.scrollView.center.x
+        self.scrollView.center.x = scrollViewInitialX + 35.0
+        UIView.animate(withDuration: 0.25,
+                       delay: 0.0,
+                       usingSpringWithDamping: 0.5,
+                       initialSpringVelocity: 0.0,
+                       options: UIViewAnimationOptions.curveEaseInOut,
+                       animations: {
             self.scrollView.alpha = scrollViewAlpha
-            self.scrollView.center.x = self.scrollViewInitialX!
+            self.scrollView.center.x = self.scrollViewInitialX
         }, completion: nil)
     }
     
@@ -463,25 +470,29 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
         closeMeterView({})
     }
     
-    func closeMeterView(completion: () -> Void) {
-        self.meterCenter.hidden = true
-        scrollViewInitialX = scrollViewInitialX ?? self.scrollView.center.x
-        println("current X is \(self.scrollView.center.x)")
-        self.scrollView.center.x = scrollViewInitialX!
-        println("Initial X is \(scrollViewInitialX)")
+    func closeMeterView(_ completion: @escaping () -> Void) {
+        self.meterCenter.isHidden = true
+        scrollViewInitialX = scrollViewInitialX != 0 ? scrollViewInitialX : self.scrollView.center.x
+        print("current X is \(self.scrollView.center.x)")
+        self.scrollView.center.x = scrollViewInitialX
+        print("Initial X is \(scrollViewInitialX)")
         self.updateASM()
-        UIView.animateWithDuration(0.25, delay: 0.0, usingSpringWithDamping: 0.5,
-            initialSpringVelocity: 0.0, options: nil, animations: {
+        UIView.animate(withDuration: 0.25,
+                       delay: 0.0,
+                       usingSpringWithDamping: 0.5,
+                       initialSpringVelocity: 0.0,
+                       options: UIViewAnimationOptions.curveEaseInOut,
+                       animations: {
                 self.scrollView.alpha = 0.0
-                self.scrollView.center.x = self.scrollViewInitialX! + 35.0
+                self.scrollView.center.x = self.scrollViewInitialX + 35.0
             }) { (isComplete: Bool) -> Void in
-                self.scrollView.hidden = true
-                self.wbIconButton.setImage(UIImage(named: "wb_sunny copy"), forState: UIControlState.Normal)
+                self.scrollView.isHidden = true
+                self.wbIconButton.setImage(UIImage(named: "wb_sunny copy"), for: .normal)
                 completion()
         }
     }
     
-    func scrollViewDidScroll(scrollView: UIScrollView) {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let scrollMax = scrollView.contentSize.height -
             scrollView.frame.height
         var scrollOffset = scrollView.contentOffset.y
@@ -501,7 +512,7 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
             case "WB":
                 changeTemperature(value)
             default:
-                let x = 1
+                let _ = 0
         }
     }
     
@@ -518,7 +529,7 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
     override func postChangeCameraSetting() {
         super.postChangeCameraSetting()
         //let's calc the denominator
-        dispatch_async(dispatch_get_main_queue()) {
+        DispatchQueue.main.async {
             if self.currentExposureDuration != nil {
                  self.shutterSpeedLabel.text = "1/\(self.FloatToDenominator(Float(self.currentExposureDuration!)))"
             } else {
@@ -570,13 +581,13 @@ class MainViewController: AVCoreViewController, UIScrollViewDelegate {
     }
     */
 
-    @IBAction func onTapPreview(sender: UITapGestureRecognizer) {
+    @IBAction func onTapPreview(_ sender: UITapGestureRecognizer) {
         destroyMeterView()
     }
     
-    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if segue.identifier == "cameraRollSegue" {
-            let vcNav = segue.destinationViewController as? UINavigationController
+            let vcNav = segue.destination as? UINavigationController
             if vcNav != nil {
                 let vc = vcNav!.viewControllers[0] as? CameraRollViewController
                 if vc != nil {

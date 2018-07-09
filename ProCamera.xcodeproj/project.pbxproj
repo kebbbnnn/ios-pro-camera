@@ -242,9 +242,12 @@
 				TargetAttributes = {
 					AF0FEFB51AACC3E2000C8F6E = {
 						CreatedOnToolsVersion = 6.2;
+						DevelopmentTeam = HUUYEKWPEW;
+						LastSwiftMigration = 0830;
 					};
 					AF0FEFCA1AACC3E2000C8F6E = {
 						CreatedOnToolsVersion = 6.2;
+						LastSwiftMigration = 0830;
 						TestTargetID = AF0FEFB51AACC3E2000C8F6E;
 					};
 				};
@@ -434,10 +437,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = HUUYEKWPEW;
 				INFOPLIST_FILE = ProCamera/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.truebucha.2018.ProCameraB;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
@@ -446,10 +452,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = HUUYEKWPEW;
 				INFOPLIST_FILE = ProCamera/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.truebucha.2018.ProCameraB;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
@@ -469,6 +478,7 @@
 				INFOPLIST_FILE = ProCameraTests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProCamera.app/ProCamera";
 			};
 			name = Debug;
@@ -484,6 +494,7 @@
 				INFOPLIST_FILE = ProCameraTests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProCamera.app/ProCamera";
 			};
 			name = Release;
